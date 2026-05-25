@@ -2261,7 +2261,9 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
-                              if (couponCodeInput.trim().toUpperCase() === 'YOLO15') {
+                              const inputCode = couponCodeInput.trim().toUpperCase();
+                              const isValidGeneratedCode = /^[A-Z0-9]{7}$/.test(inputCode);
+                              if (inputCode === 'YOLO15' || inputCode === receivedCoupon.toUpperCase() || isValidGeneratedCode) {
                                 setIsCouponApplied(true);
                                 setCouponError(false);
                               } else {
@@ -2286,7 +2288,7 @@ export default function App() {
                         )}
                         {couponError && (
                           <p className="text-[11px] text-red-600 font-semibold mt-1.5 px-1">
-                            Invalid code. Please use the coupon code YOLO15.
+                            Invalid code. Please enter your signed up coupon code or 'YOLO15'.
                           </p>
                         )}
                       </div>

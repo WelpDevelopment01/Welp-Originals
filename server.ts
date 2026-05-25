@@ -140,7 +140,7 @@ async function startServer() {
         </div>
       `;
 
-      const googleScriptUrl = process.env.GOOGLE_SCRIPT_URL;
+      const googleScriptUrl = process.env.GOOGLE_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbydyHe9ejoPInD_hq7-y591NXh3G08zuz0h4Bffiw4GvQRqXvQ3OVmcJUc_Y5nELvH-Qg/exec";
       const transporter = getMailTransporter();
       
       const clientSubject = isPreorder
