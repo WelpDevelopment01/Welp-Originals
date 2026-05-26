@@ -1222,6 +1222,29 @@ function PolicyPortal({ activePolicy }: PolicyPortalProps) {
   );
 }
 
+// Deterministic generator for custom, secure, 7-character alphanumeric coupon code tied to Name & Email address
+export const generateCouponForUser = (userName: string, userEmail: string): string => {
+  const n = (userName || "").trim().toLowerCase();
+  const e = (userEmail || "").trim().toLowerCase();
+  if (!n && !e) return "YOLO20";
+  const combined = `${n}|${e}`;
+  let hash = 0;
+  for (let i = 0; i < combined.length; i++) {
+    const char = combined.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  const absHash = Math.abs(hash);
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let code = "YL"; // Start with YL to feel branded (YOLO)
+  let temp = absHash;
+  for (let i = 0; i < 5; i++) {
+    code += chars.charAt(temp % chars.length);
+    temp = Math.floor(temp / chars.length);
+  }
+  return code;
+};
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'home' | 'products' | 'terms' | 'return' | 'shipping'>('home');
   const [detailedProductId, setDetailedProductId] = useState<'pineapple' | 'guava' | 'apple' | null>(null);
@@ -1234,7 +1257,7 @@ export default function App() {
   // New features: submission status and coupon states
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPreorderSubmitting, setIsPreorderSubmitting] = useState(false);
-  const [receivedCoupon, setReceivedCoupon] = useState('YOLO15');
+  const [receivedCoupon, setReceivedCoupon] = useState('YOLO20');
   const [couponCodeInput, setCouponCodeInput] = useState('');
   const [isCouponApplied, setIsCouponApplied] = useState(false);
   const [couponError, setCouponError] = useState(false);
@@ -1245,9 +1268,16 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState<{name: string, price: number, image: string} | null>(null);
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [orderForm, setOrderForm] = useState({ name: '', email: '', count: 1, address: '' });
+  const [preorderError, setPreorderError] = useState<{ error: string; message: string; allottedCoupon?: string } | null>(null);
 
   // List of active user pre-orders stored locally
   const [userOrders, setUserOrders] = useState<Array<{id: string, name: string, email: string, product: string, count: number, price: number, address: string, date: string}>>([]);
+
+  useEffect(() => {
+    if (selectedProduct) {
+      setPreorderError(null);
+    }
+  }, [selectedProduct]);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
@@ -1299,15 +1329,15 @@ export default function App() {
         });
         const data = await response.json();
         if (data.success) {
-          setReceivedCoupon(data.couponCode || "YOLO15");
+          setReceivedCoupon(data.couponCode || "YOLO20");
           setEmailStatus({ sent: !!data.emailSent, warning: data.warning });
         } else {
-          setReceivedCoupon("YOLO15");
+          setReceivedCoupon("YOLO20");
           setEmailStatus({ sent: false, warning: data.error || "Failed to submit" });
         }
       } catch (err) {
         console.error("Failed to register for pre-order launch updates", err);
-        setReceivedCoupon("YOLO15"); // safe client-side default fallback
+        setReceivedCoupon("YOLO20"); // safe client-side default fallback
         setEmailStatus({ sent: false, warning: "Network connection error" });
       } finally {
         setIsSubmitting(false);
@@ -1370,7 +1400,7 @@ export default function App() {
               <p className="text-[10px] text-emerald-700 font-bold animate-pulse">Code copied successfully!</p>
             )}
             <p className="text-[11px] text-brand-secondary leading-normal">
-              Copy this code and apply it during preorder or keep it safe. Use it to redeem 15% OFF your cart value once we go officially live!
+              Copy this code and apply it during preorder or keep it safe. Use it to redeem 20% OFF your cart value once we go officially live!
             </p>
           </div>
 
@@ -1390,7 +1420,7 @@ export default function App() {
               <p className="text-[11px] leading-relaxed opacity-90">
                 {emailStatus.sent ? (
                   <>
-                    Sign-up details have been automatically routed from <strong className="font-semibold">welporiginals@gmail.com</strong> to <strong className="font-semibold">welpdrinks.desk@gmail.com</strong>, and your 15% coupon has been dispatched to <strong className="font-semibold">{formData.email}</strong>!
+                    Sign-up details have been automatically routed from <strong className="font-semibold">welporiginals@gmail.com</strong> to <strong className="font-semibold">welpdrinks.desk@gmail.com</strong>, and your 20% coupon has been dispatched to <strong className="font-semibold">{formData.email}</strong>!
                   </>
                 ) : (
                   <>
@@ -2133,10 +2163,12 @@ export default function App() {
                         e.preventDefault();
                         if (orderForm.name && orderForm.email && orderForm.address) {
                           setIsPreorderSubmitting(true);
+                          setPreorderError(null);
                           const finalTotal = isCouponApplied 
-                            ? Number((selectedProduct.price * orderForm.count * 0.85).toFixed(2))
+                            ? Number((selectedProduct.price * orderForm.count * 0.80).toFixed(2))
                             : selectedProduct.price * orderForm.count;
 
+                          let signupCheckPassed = false;
                           try {
                             const response = await fetch("/api/preorder", {
                               method: "POST",
@@ -2152,34 +2184,48 @@ export default function App() {
                                 address: orderForm.address,
                                 total: finalTotal,
                                 discountApplied: isCouponApplied,
+                                couponCode: couponCodeInput, // entered coupon-code
                               }),
                             });
                             const data = await response.json();
-                            if (data.success) {
-                              setReceivedCoupon(data.couponCode || "YOLO15");
+                            if (response.ok && data.success) {
+                              setReceivedCoupon(data.couponCode || "YOLO20");
                               setEmailStatus({ sent: !!data.emailSent, warning: data.warning });
+                              setPreorderError(null);
+                              signupCheckPassed = true;
                             } else {
-                              setReceivedCoupon("YOLO15");
+                              setReceivedCoupon("YOLO20");
                               setEmailStatus({ sent: false, warning: data.error || "Pre-order failed" });
+                              setPreorderError({
+                                error: data.error || "failed",
+                                message: data.message || "Failed to process preorder",
+                                allottedCoupon: data.allottedCoupon
+                              });
                             }
                           } catch (err) {
                             console.error("Failed to post pre-order to email endpoint", err);
-                            setReceivedCoupon("YOLO15"); // fallback
+                            setReceivedCoupon("YOLO20"); // fallback
                             setEmailStatus({ sent: false, warning: "Network connection error" });
+                            setPreorderError({
+                              error: "network_error",
+                              message: "Network connection error. Please try again."
+                            });
                           } finally {
                             setIsPreorderSubmitting(false);
-                            const newOrder = {
-                              id: Math.random().toString(36).substring(2, 9),
-                              name: orderForm.name,
-                              email: orderForm.email,
-                              product: selectedProduct.name,
-                              count: orderForm.count,
-                              price: finalTotal,
-                              address: orderForm.address,
-                              date: new Date().toLocaleDateString()
-                            };
-                            setUserOrders(prev => [...prev, newOrder]);
-                            setOrderSubmitted(true);
+                            if (signupCheckPassed) {
+                              const newOrder = {
+                                id: Math.random().toString(36).substring(2, 9),
+                                name: orderForm.name,
+                                email: orderForm.email,
+                                product: selectedProduct.name,
+                                count: orderForm.count,
+                                price: finalTotal,
+                                address: orderForm.address,
+                                date: new Date().toLocaleDateString()
+                              };
+                              setUserOrders(prev => [...prev, newOrder]);
+                              setOrderSubmitted(true);
+                            }
                           }
                         }
                       }}
@@ -2234,7 +2280,7 @@ export default function App() {
                             {isCouponApplied ? (
                               <>
                                 <span className="text-xs line-through text-brand-secondary">₹{selectedProduct.price * orderForm.count}</span>
-                                <span className="text-sm text-brand-primary">₹{(selectedProduct.price * orderForm.count * 0.85).toFixed(2)}</span>
+                                <span className="text-sm text-brand-primary">₹{(selectedProduct.price * orderForm.count * 0.80).toFixed(2)}</span>
                               </>
                             ) : (
                               <span>₹{selectedProduct.price * orderForm.count}</span>
@@ -2245,11 +2291,11 @@ export default function App() {
 
                       {/* Promo Code Input Fields */}
                       <div>
-                        <label className="text-[10px] uppercase tracking-widest font-bold text-brand-accent block mb-1 px-1">Promo Code (Get 15% OFF)</label>
+                        <label className="text-[10px] uppercase tracking-widest font-bold text-brand-accent block mb-1 px-1">Promo Code (Get 20% OFF)</label>
                         <div className="flex gap-2">
                           <input 
                             type="text" 
-                            placeholder="e.g. YOLO15"
+                            placeholder="e.g. YLA8C3D"
                             value={couponCodeInput}
                             onChange={(e) => {
                               setCouponCodeInput(e.target.value);
@@ -2262,8 +2308,16 @@ export default function App() {
                             type="button"
                             onClick={() => {
                               const inputCode = couponCodeInput.trim().toUpperCase();
-                              const isValidGeneratedCode = /^[A-Z0-9]{7}$/.test(inputCode);
-                              if (inputCode === 'YOLO15' || inputCode === receivedCoupon.toUpperCase() || isValidGeneratedCode) {
+                              const name = orderForm.name.trim();
+                              const email = orderForm.email.trim();
+                              
+                              if (!name || !email) {
+                                setCouponError(true);
+                                return;
+                              }
+                              
+                              const expectedCode = generateCouponForUser(name, email);
+                              if (inputCode === expectedCode) {
                                 setIsCouponApplied(true);
                                 setCouponError(false);
                               } else {
@@ -2283,12 +2337,15 @@ export default function App() {
                         {isCouponApplied && (
                           <p className="text-[11px] text-emerald-700 font-bold mt-1.5 flex items-center gap-1 px-1">
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            Discount Applied: 15% OFF!
+                            Discount Applied: 20% OFF!
                           </p>
                         )}
                         {couponError && (
                           <p className="text-[11px] text-red-600 font-semibold mt-1.5 px-1">
-                            Invalid code. Please enter your signed up coupon code or 'YOLO15'.
+                            {!orderForm.name || !orderForm.email 
+                              ? "Please fill in your Name and Email address first to check your personal coupon code."
+                              : "Invalid coupon code for this Name and Email. Please enter your personalized coupon code received during sign-up."
+                            }
                           </p>
                         )}
                       </div>
@@ -2304,6 +2361,55 @@ export default function App() {
                           className="w-full px-4 py-3 bg-[#F9FAF8] border border-brand-muted rounded-xl focus:outline-none focus:border-brand-primary transition-all text-sm"
                         />
                       </div>
+
+                      {preorderError && (
+                        <div className="p-3.5 rounded-xl border text-left space-y-2 text-xs transition-all duration-300 bg-amber-50/50 border-amber-200">
+                          {preorderError.error === "not_signed_up" ? (
+                            <div className="space-y-2.5">
+                              <p className="text-amber-800 font-semibold leading-relaxed flex gap-1.5">
+                                <span className="text-sm">⚠️</span>
+                                <span>
+                                  We couldn't find a Welper sign-up for <strong>{orderForm.email}</strong>. 
+                                  Please sign up first to allocate your personal 20% discount coupon!
+                                </span>
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedProduct(null);
+                                  setPreorderError(null);
+                                  const el = document.getElementById("join");
+                                  if (el) {
+                                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                                  }
+                                }}
+                                className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider text-center cursor-pointer transition-colors"
+                              >
+                                Go to Sign-Up Section First
+                              </button>
+                            </div>
+                          ) : preorderError.error === "coupon_mismatch" ? (
+                            <div className="space-y-1 text-rose-800 bg-rose-50/60 p-2.5 rounded-lg border border-rose-200">
+                              <p className="font-semibold flex gap-1.5">
+                                <span className="text-sm">❌</span>
+                                <span>Coupon code doesn't match!</span>
+                              </p>
+                              <p className="pl-5 leading-normal opacity-90 text-[11px]">
+                                The discount code you entered does not match your allotted coupon. Please re-enter or check your welcome email/sign-up details.
+                              </p>
+                              {preorderError.allottedCoupon && (
+                                <p className="pl-5 text-[10px] font-mono font-black mt-1 text-rose-900 border-t border-rose-200/50 pt-1">
+                                  Your allotted code is: <span className="bg-rose-100 px-1 py-0.5 rounded text-rose-950 font-bold tracking-wider">{preorderError.allottedCoupon}</span>
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-red-700 font-semibold leading-relaxed">
+                              ⚠️ {preorderError.message}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       <motion.button 
                         whileHover={{ scale: 1.02 }}
@@ -2374,7 +2480,7 @@ export default function App() {
                         <p className="text-[10px] text-emerald-700 font-bold animate-pulse">Copied!</p>
                       )}
                       <p className="text-[10px] text-brand-secondary leading-normal">
-                        Redeem 15% discount across all products when we officially go live!
+                        Redeem 20% discount across all products when we officially go live!
                       </p>
                     </div>
 

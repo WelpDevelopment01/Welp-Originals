@@ -49,17 +49,29 @@ async function startServer() {
 
       const isPreorder = type === "preorder";
 
-      // Self-contained generator for custom, secure, 7-character alphanumeric coupon code
-      const generateRandomCoupon = (): string => {
-        const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        let code = "";
-        for (let i = 0; i < 7; i++) {
-          code += characters.charAt(Math.floor(Math.random() * characters.length));
+      // Deterministic generator for custom, secure, 7-character alphanumeric coupon code tied to Name & Email address
+      const generateCouponForUser = (userName: string, userEmail: string): string => {
+        const n = (userName || "").trim().toLowerCase();
+        const e = (userEmail || "").trim().toLowerCase();
+        const combined = `${n}|${e}`;
+        let hash = 0;
+        for (let i = 0; i < combined.length; i++) {
+          const char = combined.charCodeAt(i);
+          hash = (hash << 5) - hash + char;
+          hash = hash & hash; // Convert to 32bit integer
+        }
+        const absHash = Math.abs(hash);
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let code = "YL"; // Start with YL to feel branded (YOLO)
+        let temp = absHash;
+        for (let i = 0; i < 5; i++) {
+          code += chars.charAt(temp % chars.length);
+          temp = Math.floor(temp / chars.length);
         }
         return code;
       };
 
-      const couponCode = generateRandomCoupon();
+      const couponCode = generateCouponForUser(name, email);
 
       const subject = isPreorder 
         ? `🔥 [YOLO Soda Pre-Order] New reservation from ${name}!` 
@@ -114,7 +126,7 @@ async function startServer() {
             </tr>
             <tr style="background-color: #f7fafc;">
               <td style="padding: 10px; font-weight: bold; color: #4a5568; border-bottom: 1px solid #edf2f7;">Discount Applied</td>
-              <td style="padding: 10px; color: #2d3748; border-bottom: 1px solid #edf2f7; font-weight: bold; color: #2D5A27;">${discountApplied ? `Yes (15% Off Code ${couponCode})` : "None"}</td>
+              <td style="padding: 10px; color: #2d3748; border-bottom: 1px solid #edf2f7; font-weight: bold; color: #2D5A27;">${discountApplied ? `Yes (20% Off Code ${couponCode})` : "None"}</td>
             </tr>
             <tr style="background-color: #edf2f7;">
               <td style="padding: 10px; font-weight: bold; color: #2d3748; font-size: 14px;">Total Order Value</td>
@@ -130,7 +142,7 @@ async function startServer() {
 
           <div style="background-color: #f0fff4; border: 1px solid #cee5d0; border-radius: 8px; padding: 12px 16px; margin-top: 16px; text-align: center;">
             <p style="margin: 0; font-size: 13px; color: #2D5A27; font-weight: bold;">
-              Exclusive launch discount coupon ${couponCode} (15% OFF) issued to client.
+              Exclusive launch discount coupon ${couponCode} (20% OFF) issued to client.
             </p>
           </div>
 
@@ -140,42 +152,66 @@ async function startServer() {
         </div>
       `;
 
-      const googleScriptUrl = process.env.GOOGLE_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbydyHe9ejoPInD_hq7-y591NXh3G08zuz0h4Bffiw4GvQRqXvQ3OVmcJUc_Y5nELvH-Qg/exec";
+      const googleScriptUrl = process.env.GOOGLE_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbwGbETi4P_X7gQVXPNQQKWS5xcx9WR4ECUf-c2GRCcoxZdLFjppsLWn5eLFVH83tao1/exec";
       const transporter = getMailTransporter();
       
       const clientSubject = isPreorder
-        ? `🥤 [YOLO Soda] We've received your Pre-Order reservation!`
-        : `🎉 [YOLO Soda] Welcome to the Tribe, Welper! Get ready to YOLO.`;
+        ? `Welper Pre-order details`
+        : `You have officially became a Welper`;
 
-      const clientHtml = `
+      const clientHtml = isPreorder ? `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
           <div style="text-align: center; margin-bottom: 24px;">
             <p style="font-size: 24px; font-weight: 900; color: #2D5A27; margin: 0; letter-spacing: 1px; text-transform: uppercase;">YOLO SODA</p>
             <p style="font-size: 12px; font-weight: bold; color: #718096; margin: 4px 0 0 0; text-transform: uppercase; letter-spacing: 2px;">Premium Adaptogen Refreshment</p>
           </div>
           
-          <h1 style="font-size: 20px; color: #2D5A27; text-align: center; margin-top: 0;">Hey ${name}! You are now a Welper!</h1>
+          <h2 style="font-size: 20px; color: #2D5A27; text-align: center; margin-top: 0; text-transform: uppercase;">Welper Pre-order details</h2>
           
           <p style="font-size: 14px; color: #4a5568; line-height: 1.6; text-align: center;">
-            Thanks for supporting YOLO Soda. We've received your ${isPreorder ? "pre-order reservation" : "launch notice sign-up"}.
+            Thank you for securing your YOLO Soda reservation! Here are your official preorder confirmation details:
           </p>
 
-          <div style="margin: 28px 0; background-color: #FAFBF9; border: 2px dashed #2D5A27; border-radius: 12px; padding: 20px; text-align: center;">
-            <p style="font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #718096; margin-top: 0; margin-bottom: 8px;">YOUR EXCLUSIVE 15% LAUNCH DISCOUNT COUPON</p>
-            <h2 style="font-size: 32px; font-weight: 900; color: #2D5A27; letter-spacing: 4px; margin: 0;">${couponCode}</h2>
-            <p style="font-size: 12px; color: #4a5568; margin-top: 8px; margin-bottom: 0; font-weight: 500;">
-              Apply this code during future online checkout when our products go officially live to unlock 15% off your entire cart!
-            </p>
+          <div style="background-color: #f7fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2d3748;"><strong>Name:</strong> ${name}</p>
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2d3748;"><strong>Email Address:</strong> ${email}</p>
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2d3748;"><strong>Flavor:</strong> ${product}</p>
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2d3748;"><strong>Number of bottles:</strong> ${count}</p>
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2d3748;"><strong>Amount to be paid:</strong> ₹${total}</p>
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2d3748;"><strong>Address:</strong> ${address}</p>
           </div>
 
-          ${isPreorder ? `
-          <div style="background-color: #f7fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
-            <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: bold; color: #4a5568; text-transform: uppercase;">Pre-Order Details Reserved:</p>
-            <p style="margin: 0 0 4px 0; font-size: 13px; color: #2d3748;"><strong>Flavor:</strong> ${product}</p>
-            <p style="margin: 0 0 4px 0; font-size: 13px; color: #2d3748;"><strong>Quantity:</strong> ${count} ${count === 1 ? "bottle" : "bottles"}</p>
-            <p style="margin: 0 0 4px 0; font-size: 13px; color: #2d3748;"><strong>Reserved Total Cost:</strong> ₹${total}</p>
+          <p style="font-size: 13px; color: #718096; line-height: 1.6; text-align: center;">
+            We'll notify you as soon as your batch is ready to ship out!
+          </p>
+
+          <div style="margin-top: 24px; text-align: center; font-size: 11px; color: #a0aec0; border-top: 1px solid #edf2f7; padding-top: 16px;">
+            YOLO Soda Inc. • Guntur - Mumbai - Delhi • Natural Wellness
           </div>
-          ` : ""}
+        </div>
+      ` : `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <p style="font-size: 24px; font-weight: 900; color: #2D5A27; margin: 0; letter-spacing: 1px; text-transform: uppercase;">YOLO SODA</p>
+            <p style="font-size: 12px; font-weight: bold; color: #718096; margin: 4px 0 0 0; text-transform: uppercase; letter-spacing: 2px;">Premium Adaptogen Refreshment</p>
+          </div>
+          
+          <h2 style="font-size: 20px; color: #2D5A27; text-align: center; margin-top: 0; text-transform: uppercase;">You have officially became a Welper</h2>
+          
+          <div style="background-color: #f7fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2d3748;"><strong>Name of user:</strong> ${name}</p>
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2d3748;"><strong>Email Address of the user:</strong> ${email}</p>
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2d3748;"><strong>Flavor selected by the user:</strong> ${product || "N/A"}</p>
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2D5A27; font-weight: bold;"><strong>Coupon code:</strong> ${couponCode}</p>
+          </div>
+
+          <div style="margin: 28px 0; background-color: #FAFBF9; border: 2px dashed #2D5A27; border-radius: 12px; padding: 20px; text-align: center;">
+            <p style="font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #718096; margin-top: 0; margin-bottom: 8px;">YOUR EXCLUSIVE 20% LAUNCH DISCOUNT COUPON</p>
+            <h2 style="font-size: 32px; font-weight: 900; color: #2D5A27; letter-spacing: 4px; margin: 0;">${couponCode}</h2>
+            <p style="font-size: 12px; color: #4a5568; margin-top: 8px; margin-bottom: 0; font-weight: 500;">
+              Apply this code during future online checkout when our products go officially live to unlock 20% off your entire cart!
+            </p>
+          </div>
 
           <p style="font-size: 13px; color: #718096; line-height: 1.6; text-align: center;">
             We'll send you private updates, behind-the-scenes formulations, and the exact launching date so you can lock in your discount.
@@ -187,39 +223,146 @@ async function startServer() {
         </div>
       `;
 
+      const clientCouponCode = (req.body.couponCode || "").trim().toUpperCase();
+      const resolvedCoupon = isPreorder ? (clientCouponCode || couponCode) : couponCode;
+
       if (googleScriptUrl) {
         try {
-          // 1. Send warning/detail mail to welpdrinks.desk@gmail.com
-          await fetch(googleScriptUrl, {
+          // 1. Send warning/detail mail to welpdrinks.desk@gmail.com and write/update row in Google spreadsheet
+          const scriptResponse = await fetch(googleScriptUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: "welpdrinks.desk@gmail.com",
               subject: subject,
-              html: htmlContent
+              html: htmlContent,
+              appendRow: true,
+              type: type || "registration",
+              name: name || "N/A",
+              email: email || "N/A",
+              product: product || "N/A",
+              count: count || 1,
+              address: address || "",
+              total: total || 0,
+              couponCode: resolvedCoupon,
+              coupon: resolvedCoupon,
+              coupon_code: resolvedCoupon,
+              code: resolvedCoupon,
+              discountCode: resolvedCoupon,
+              discount_code: resolvedCoupon,
+              allottedCoupon: couponCode,
+              allotted_coupon: couponCode,
+              appliedCoupon: clientCouponCode || "None",
+              applied_coupon: clientCouponCode || "None",
+              discountApplied: !!discountApplied
             })
           });
 
-          // 2. Send confirmation mail to client
-          await fetch(googleScriptUrl, {
+          const responseText = await scriptResponse.text();
+          console.log(`[Google Apps Script POST] HTTP status of first call: ${scriptResponse.status}`);
+          console.log(`[Google Apps Script POST] Raw Response Content: "${responseText}"`);
+
+          let scriptData: any = null;
+          try {
+            if (responseText && responseText.trim()) {
+              scriptData = JSON.parse(responseText);
+            }
+          } catch (jsonErr) {
+            console.warn("[Google Apps Script API] Response was not JSON format. This is common if the Apps Script returns text, an HTML redirect, or errors out.", jsonErr);
+            
+            if (responseText.includes("Service requiring authorization") || responseText.includes("login") || responseText.includes("Accounts")) {
+              console.error("🚨 [Google Apps Script Authorization Required] Your deployment is asking for authorization. Please make sure that under 'Who has access to the app' you selected 'Anyone' (NOT 'Anyone with a Google account' or 'Myself') and redeployed a NEW version!");
+            }
+          }
+
+          // Check if Apps Script returned a validation error (if it spoke JSON)
+          if (scriptData && scriptData.success === false) {
+            console.warn("[Google Apps Script Validation Failed]", scriptData);
+            return res.status(400).json({
+              success: false,
+              error: scriptData.error,
+              allottedCoupon: scriptData.allottedCoupon,
+              message: scriptData.message
+            });
+          }
+
+          // If Apps Script failed completely with an error status (e.g. 404 or 500), throw to fall back
+          if (scriptResponse.status >= 400) {
+            throw new Error(`Google Apps Script web app returned HTTP status ${scriptResponse.status}`);
+          }
+
+        let emailSent = true;
+        let warningMsg = "";
+
+        if (scriptData && scriptData.emailSent === false) {
+          emailSent = false;
+          warningMsg = scriptData.emailError || "Admin notify email failed.";
+        }
+
+        // 2. Send confirmation mail to client (instruct the script to skip double-adding the sheet row)
+        let confirmData: any = null;
+        try {
+          const confirmResponse = await fetch(googleScriptUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: email,
               subject: clientSubject,
-              html: clientHtml
+              html: clientHtml,
+              skipSheet: true,
+              type: type || "registration",
+              name: name || "N/A",
+              email: email || "N/A",
+              product: product || "N/A",
+              count: count || 1,
+              address: address || "",
+              total: total || 0,
+              couponCode: resolvedCoupon,
+              coupon: resolvedCoupon,
+              coupon_code: resolvedCoupon,
+              code: resolvedCoupon,
+              discountCode: resolvedCoupon,
+              discount_code: resolvedCoupon,
+              allottedCoupon: couponCode,
+              allotted_coupon: couponCode,
+              appliedCoupon: clientCouponCode || "None",
+              applied_coupon: clientCouponCode || "None",
+              discountApplied: !!discountApplied
             })
           });
+          const confirmText = await confirmResponse.text();
+          console.log(`[Google Apps Script Confirmation POST] Status: ${confirmResponse.status}, Response: "${confirmText}"`);
+          
+          try {
+            if (confirmText && confirmText.trim()) {
+              confirmData = JSON.parse(confirmText);
+            }
+          } catch (jsonErr) {
+            console.warn("[Google Apps Script Confirmation API] Response was not JSON format.", jsonErr);
+          }
 
-          console.log(`[Google Apps Script] Mails dispatched successfully! Sent to welpdrinks.desk@gmail.com and ${email}`);
+          if (confirmData && confirmData.emailSent === false) {
+            emailSent = false;
+            warningMsg = confirmData.emailError || "Client confirmation email failed to send.";
+          }
+        } catch (confirmErr: any) {
+          console.warn("[Google Apps Script Confirmation Mail Failed] Skipping client mail or fallback to SMTP:", confirmErr);
+          emailSent = false;
+          warningMsg = confirmErr?.message || "Failed to send confirmation email.";
+        }
 
-          return res.json({
-            success: true,
-            couponCode,
-            emailSent: true,
-            method: "google_apps_script",
-            message: "Preorder successfully received and routed completely via Google Apps Script!"
-          });
+        console.log(`[Google Apps Script] Mails processed. Success status of emailSent: ${emailSent}. Warning: ${warningMsg}`);
+
+        return res.json({
+          success: true,
+          couponCode: resolvedCoupon,
+          emailSent: emailSent,
+          warning: warningMsg || undefined,
+          method: "google_apps_script",
+          message: isPreorder 
+            ? "Pre-order successfully matching sheets and reserved!"
+            : "Sign up successfully completed and written to sheet!"
+        });
         } catch (scriptErr: any) {
           console.error("[Google Apps Script Route Error] Failed, falling back to SMTP", scriptErr);
         }
